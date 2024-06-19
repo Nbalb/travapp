@@ -2,12 +2,13 @@ library(DT)
 library(shinydashboard)
 library(dplyr)
 library(tibble)
+library(janitor)
 library(shiny)
 
 # Using trick to add/remove rows from https://github.com/yihanwu/Nutrient_Calculator/blob/master/app.R
 # Load reference tables
-bar_weight_df <- read.csv("tabella peso barre ca.csv")
-net_weight_df <- read.csv("tabella rete elettrosaldata da ca.csv")
+bar_weight_df <- read.csv("data/tabella peso barre ca.csv")
+net_weight_df <- read.csv("data/tabella rete elettrosaldata da ca.csv")
 
 ui <- dashboardPage(
   dashboardHeader(title = "Travapp"),
@@ -28,7 +29,7 @@ ui <- dashboardPage(
       ## These elements show only based on the component selection
       conditionalPanel("input.comp != 'Staffe'",
                        selectInput("p_bar", label = "Posizione barre", 
-                                   choices = c("Sup", "Inf")),
+                                   choices = c("Sup", "Inf", "-")),
                        numericInput("n_bar", label = "Numero barre", 3),
                        numericInput("d_bar", label = "Diametro barre", 16),
                        numericInput("l_bar", label = "Lunghezza barre", 710),
@@ -58,16 +59,17 @@ ui <- dashboardPage(
       box(title = "Barre",
           width = 12,
           DTOutput("bar_df"),
-          verbatimTextOutput("bar_weight"),
-          verbatimTextOutput("total_bar_weight"))),
+          verbatimTextOutput("bar_weight"))),
       fluidRow(
         box(title = "Staffe",
             width = 12,
             DTOutput("bracket_df"),
-            textOutput("bracket_weight"),
-            verbatimTextOutput("bracket_weight"),
-            verbatimTextOutput("total_bracket_weight")
             )
+    ),
+    tags$footer(
+      style = "position: absolute; bottom: 0; width: 100%; text-align: center;",
+      "Created by ", 
+      tags$a(href = 'mailto:nbalboniwork@gmail.com', "Nicola Balboni")
     )
   )
 )
@@ -101,7 +103,7 @@ server <- function(input, output) {
       
       new_row <- new_row |> 
         mutate(section_area = bar_spec$area_sezione,
-               w_bar = n_bar*bar_spec$peso*l_bar/100)
+               w_bar = round(n_bar*bar_spec$peso*l_bar/100, 2))
       
       # Bind new row to the bar df
       isolate(unit_df$bar_df <- bind_rows(unit_df$bar_df, new_row))
@@ -116,8 +118,9 @@ server <- function(input, output) {
                d_bracket = input$d_bracket,
                l_bracket = input$l_bracket,
                l_bracket2 = input$l_bracket2,
-               n_bracket = ceiling((l_trav/pitch)+1)) |> 
-        relocate(n_bracket, .after = pitch)
+               n_bracket = ifelse(nrow(unit_df$bracket_df) == 0, 
+                                  round(l_trav/pitch) + 1, 
+                                  round(l_trav/pitch)))
       
       # Get bracket weight and section area
       bracket_spec <- bar_weight_df |> 
@@ -127,10 +130,10 @@ server <- function(input, output) {
       # Check how many bracket types are present and compute weight accordingly
       if(input$comp == "Staffe" & input$l_bracket2 == 0){
         new_row <- new_row |> 
-          mutate(w_bracket = l_bracket*n_bracket*bracket_spec$peso/100)
+          mutate(w_bracket = round(l_bracket*n_bracket*bracket_spec$peso/100, 2))
       }else if(input$comp == "Staffe" & input$l_bracket2 != 0){
         new_row <- new_row |> 
-          mutate(w_bracket = (l_bracket+l_bracket2)*n_bracket*bracket_spec$peso/100)
+          mutate(w_bracket = round((l_bracket+l_bracket2)*n_bracket*bracket_spec$peso/100, 2))
       }
       
       # Add new bracket row to bracket df
@@ -169,39 +172,74 @@ server <- function(input, output) {
     }else{0}
   })
   
+  # Add adorn totals
+  bar_tot <- reactive({
+    if(!is.null(unit_df$bar_df) & nrow(unit_df$bar_df) > 0){
+      unit_df$bar_df |> 
+        relocate(c(n_bar, w_bar), .after = last_col()) |> 
+        adorn_totals(where = "row", fill = "-", na.rm = T, name = "Totale", 
+                     c(n_bar, w_bar))
+    }
+  })
+  
+  bracket_tot <- reactive({
+    if(!is.null(unit_df$bracket_df) & nrow(unit_df$bracket_df) > 0){
+      unit_df$bracket_df |> 
+        relocate(c(n_bracket, w_bracket), .after = last_col()) |> 
+        adorn_totals(where = "row", fill = "-", na.rm = T, name = "Totale", 
+                     c(n_bracket, w_bracket))
+    }
+  })
+  
   # Output the two datatables
   ## Define output column names
-  bar_df_names <- c("US", "N. Travata", "Componente", "Posizione barra", "n barre",
-                    "Diametro barra", "Lunghezza barra", "Area sezione", "Peso barra")
+  bar_df_names <- c("US", "N. Travata", "Componente", "Posizione barra",
+                    "Diametro barra", "Lunghezza barra", "Area sezione", "Numero barre", "Peso barra")
   bracket_df_names <- c("US", "N. Travata", "Componente", "Lunghezza trave",
-                        "Passo", "Numero staffe", "Diametro staffa", "Lunghezza staffe",
-                        "Lunghezza staffe 2", "Peso staffe")
-  output$bar_df <- renderDT(datatable(unit_df$bar_df, 
+                        "Passo", "Diametro staffa", "Lunghezza staffe",
+                        "Lunghezza staffe 2", "Numero staffe", "Peso staffe")
+  output$bar_df <- renderDT(datatable(bar_tot(), 
                                       colnames = bar_df_names,
-                                      rownames = F))
-  output$bracket_df <- renderDT(datatable(unit_df$bracket_df, 
+                                      rownames = F,
+                                      extensions = "Buttons", 
+                                      options = list(info = FALSE,
+                                                     paging = TRUE,
+                                                     searching = TRUE,
+                                                     fixedColumns = TRUE,
+                                                     autoWidth = TRUE,
+                                                     ordering = TRUE,
+                                                     scrollX = TRUE,
+                                                     dom = 'tB',
+                                                     buttons = c('copy', 'csv', 'excel', 'pdf')))
+                                      )
+  output$bracket_df <- renderDT(datatable(bracket_tot(), 
                                           colnames = bracket_df_names,
-                                          rownames = F))
+                                          rownames = F, 
+                                extensions = "Buttons", 
+                                options = list(info = FALSE,
+                                               paging = TRUE,
+                                               searching = TRUE,
+                                               fixedColumns = TRUE,
+                                               autoWidth = TRUE,
+                                               ordering = TRUE,
+                                               scrollX = TRUE,
+                                               dom = 'tB',
+                                               buttons = c('copy', 'csv', 'excel', 'pdf')))
+  )
   
   # Print total weights of bars and brackets if they have at least 1 entry
   observe({
     if(!is.null(unit_df$bar_df) & nrow(unit_df$bar_df) > 0){
       output$bar_weight <- renderText({
         paste0("Peso ", total_bar_w()$comp, ": ", total_bar_w()$comp_weight, " kg\n")
-      })
-      output$total_bar_weight <- renderText({
-        paste0("Peso totale: ", unique(total_bar_w()$tot_weight), " kg")
-      })
-    }else if(!is.null(unit_df$bracket_df) & nrow(unit_df$bracket_df) > 0){
-      output$bracket_weight <- renderText({
-        paste0("Peso totale staffe: ", unique(total_bracket_w()), " kg")
-      })
+      },
+      sep = "")
     }
   })
   
   # Print them also in the big boxes on top
   output$bar_weight_box <- renderValueBox({
-    valueBox(value = paste(total_bar_w()$tot_weight, "kg"), 
+    valueBox(value = paste(unique(total_bar_w()$tot_weight), "kg"), 
              "Barre", icon = icon("align-right"), color = "blue")
   })
   output$bracket_weight_box <- renderValueBox({
@@ -209,14 +247,14 @@ server <- function(input, output) {
              "Staffe", icon = icon("infinity"), color = "yellow")
   })
   output$total_weight_box <- renderValueBox({
-    valueBox(value = paste(total_bar_w()$tot_weight + total_bracket_w(), "kg"),
+    valueBox(value = paste(unique(total_bar_w()$tot_weight) + total_bracket_w(), "kg"),
              "Peso US", icon = icon("cube"), color = "green")
   })
 }
 
 shinyApp(ui, server)
 
-## TODO: implement remove functionality, in order to do so , we have to move all the calculations outside of the observeEvent(input$add) since all the calculations this way are executed only when we add a row and not when we remove it.
+## TODO: round to ceiling second decimal places on weight
 
 # conv_names <- tibble(df = c("unit", "n_trav", "comp", "p_bar", "d_bar", "l_bar",
 #                             "l_trav", "pitch", "d_bracket", "l_bracket", "l_bracket2",

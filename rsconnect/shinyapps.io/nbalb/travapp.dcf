@@ -1,0 +1,12 @@
+name: travapp
+title:
+username: nbalb
+account: nbalb
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12137225
+bundleId: 8763831
+url: https://nbalb.shinyapps.io/travapp/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
