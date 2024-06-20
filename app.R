@@ -54,6 +54,25 @@ ui <- dashboardPage(
       valueBoxOutput("total_weight_box")
     ),
     
+    tags$head(
+      tags$style(HTML("
+    .sep {
+      width: 20px;
+      height: 1px;
+      float: left;
+    }
+    .dataTables_wrapper .dataTable tr.odd {
+      background-color: #FFFFFF; /* White */
+    }
+    .dataTables_wrapper .dataTable tr.even {
+      background-color: #E6E6E6; /* Grey90 */
+    }
+    .dataTables_wrapper .dataTable tr.last {
+      background-color: #D6DEFF; /* Light cyan-lime green */
+    }
+  "))
+    ),
+    
     # Tables
     fluidRow(
       box(title = "Barre",
@@ -198,33 +217,49 @@ server <- function(input, output) {
   bracket_df_names <- c("US", "N. Travata", "Componente", "Lunghezza trave",
                         "Passo", "Diametro staffa", "Lunghezza staffe",
                         "Lunghezza staffe 2", "Numero staffe", "Peso staffe")
-  output$bar_df <- renderDT(datatable(bar_tot(), 
-                                      colnames = bar_df_names,
-                                      rownames = F,
-                                      extensions = "Buttons", 
-                                      options = list(info = FALSE,
-                                                     paging = TRUE,
-                                                     searching = TRUE,
-                                                     fixedColumns = TRUE,
-                                                     autoWidth = TRUE,
-                                                     ordering = TRUE,
-                                                     scrollX = TRUE,
-                                                     dom = 'tB',
-                                                     buttons = c('copy', 'csv', 'excel', 'pdf')))
-                                      )
-  output$bracket_df <- renderDT(datatable(bracket_tot(), 
-                                          colnames = bracket_df_names,
-                                          rownames = F, 
-                                extensions = "Buttons", 
-                                options = list(info = FALSE,
-                                               paging = TRUE,
-                                               searching = TRUE,
-                                               fixedColumns = TRUE,
-                                               autoWidth = TRUE,
-                                               ordering = TRUE,
-                                               scrollX = TRUE,
-                                               dom = 'tB',
-                                               buttons = c('copy', 'csv', 'excel', 'pdf')))
+  output$bar_df <- renderDT(
+    datatable(bar_tot(), 
+              colnames = bar_df_names,
+              rownames = F,
+              extensions = "Buttons", 
+              options = list(
+                             info = TRUE,
+                             paging = TRUE,
+                             searching = TRUE,
+                             fixedColumns = FALSE,
+                             # autoWidth = TRUE,
+                             ordering = TRUE,
+                             dom = 'tB<"sep">lip',
+                             pageLength = 15,
+                             buttons = c('copy', 'csv', 'excel', 'pdf'),
+                             rowCallback = JS(
+                               "function(row, data, index) {
+       if (index === this.api().data().length - 1) {
+         $(row).addClass('last');
+       }
+     }")))
+  )
+  output$bracket_df <- renderDT(
+    datatable(bracket_tot(), 
+              colnames = bracket_df_names,
+              rownames = F, 
+              extensions = "Buttons", 
+              options = list(
+                             info = TRUE,
+                             paging = TRUE,
+                             searching = TRUE,
+                             fixedColumns = FALSE,
+                             # autoWidth = TRUE,
+                             ordering = TRUE,
+                             dom = 'tB<"sep">lip',
+                             pageLength = 15,
+                             buttons = c('copy', 'csv', 'excel', 'pdf'),
+                             rowCallback = JS(
+                               "function(row, data, index) {
+             if (index === this.api().data().length - 1) {
+               $(row).addClass('last');
+             }
+            }")))
   )
   
   # Print total weights of bars and brackets if they have at least 1 entry
@@ -255,6 +290,7 @@ server <- function(input, output) {
 shinyApp(ui, server)
 
 ## TODO: round to ceiling second decimal places on weight
+## TODO: striping (https://stackoverflow.com/questions/58925830/control-row-stripe-color-in-datatable-output/58931156#58931156)i
 
 # conv_names <- tibble(df = c("unit", "n_trav", "comp", "p_bar", "d_bar", "l_bar",
 #                             "l_trav", "pitch", "d_bracket", "l_bracket", "l_bracket2",
